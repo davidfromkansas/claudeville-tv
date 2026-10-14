@@ -5,9 +5,11 @@
 
   const params = new URLSearchParams(location.search);
   const BASE = new URL(params.get('data') || '/claude-simcity2000/claudeville-3/', location.href).href;
-  const POLL_MS = 60 * 1000;
+  const POLL_MS = 30 * 1000;
+  const BOT_EVERY_MS = 5 * 60 * 1000; // the game bot publishes about every 5 minutes
   const GOAL = 100000, START = 2000, DEADLINE = 2050;
   const PACE_PER_YEAR = GOAL / (DEADLINE - START);
+  const REDUCED = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const KINDS = ['strategy', 'build', 'zone', 'fix', 'budget', 'disaster', 'milestone'];
   const KIND_LABEL = { strategy: 'Plan', build: 'Build', zone: 'Zone', fix: 'Fix', budget: 'Budget', disaster: 'Disaster', milestone: 'Milestone' };
 
@@ -59,6 +61,8 @@
   const short = (v) => (v >= 1000 ? (v / 1000).toFixed(v >= 10000 ? 0 : 1).replace(/\.0$/, '') + 'k' : String(v || 0));
   const url = (rel, base) => new URL(rel, base).href;
   const bust = (u) => u + (u.includes('?') ? '&' : '?') + 't=' + Date.now();
+  // Keep looping animations in step across re-renders so they don't restart on every poll.
+  const panSync = () => `animation-delay:-${((Date.now() / 1000) % 24).toFixed(2)}s`;
   const pace = (gy) => Math.max(0, (gy - START) * PACE_PER_YEAR);
   const plain = (t) => String(t || '').replace(/\*\*|`/g, '').replace(/\*([^*]+)\*/g, '$1').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
   function ago(iso) {
@@ -146,12 +150,24 @@
       if (!state.loaded) document.getElementById('main').replaceChildren(h('p', { class: 'error', text: 'Could not load the Claudeville 3 data. Try again in a minute.' }));
       return;
     }
+    const before = new Map();
     const jobs = list.map(async (e) => {
       const old = state.attempts.get(e.attempt);
       if (old && !old.live && old.status === e.status) return; // finished attempts don't change
+      if (old) before.set(e.attempt, old);
       state.attempts.set(e.attempt, await loadAttempt(e));
     });
     await Promise.all(jobs);
+    if (state.loaded) {
+      for (const [n, old] of before) {
+        const a = state.attempts.get(n);
+        if (!a || !a.live) continue;
+        if (a.updated !== old.updated) state.flashUntil = Date.now() + 1200;
+        const seen = new Set(old.moves.map(moveKey));
+        const fresh = a.moves.filter((m) => !seen.has(moveKey(m)));
+        if (fresh.length) showToast(a, fresh[fresh.length - 1], fresh.length);
+      }
+    }
     state.list = list.map((e) => e.attempt).sort((a, b) => b - a);
     state.loaded = true;
     render();
@@ -195,6 +211,7 @@
       }
       fillDetail(a);
       fillChat(a);
+      tickCountdown();
     } else {
       state.shown = null;
       chat.hidden = true;
@@ -207,14 +224,15 @@
     const el = document.getElementById('updated');
     const a = liveAttempt();
     el.replaceChildren();
-    if (a && a.updated) el.append(h('span', { class: 'dot', 'aria-hidden': 'true' }), `Attempt ${a.n} live · game updated ${ago(a.updated)}`);
+    if (a && a.updated) el.append(h('span', { class: 'ping', 'aria-hidden': 'true' }), h('span', {}, h('b', { text: `Attempt ${a.n} is live` }), ` · updated ${ago(a.updated)}`));
+    el.classList.toggle('on', !!(a && a.updated));
   }
 
   function attemptLink(a, cls, ...kids) {
     return h('a', { class: cls, href: `#/attempt/${a.n}` }, ...kids);
   }
   function badge(a) {
-    return h('span', { class: 'badge' + (a.live ? ' live' : ''), text: a.live ? 'LIVE' : (a.success ? 'GOAL MET' : 'ENDED') });
+    return h('span', { class: 'badge' + (a.live ? ' live fx-live' : ''), text: a.live ? 'LIVE' : (a.success ? 'GOAL MET' : 'ENDED') });
   }
   function title(a) {
     return a.live ? `Attempt ${a.n} · live in ${a.latest ? a.latest.date : 'progress'}` : `Attempt ${a.n} · peak ${fmt(a.peak)} people`;
@@ -236,7 +254,7 @@
     const items = state.list.map((n) => state.attempts.get(n)).filter(Boolean).map((a) => {
       const on = state.route.view === 'detail' && state.route.n === a.n;
       return attemptLink(a, 'side' + (on ? ' on' : ''),
-        h('span', { class: 'avatar' }, h('img', { src: a.thumb, alt: '' }), a.live ? h('span', { class: 'livedot', 'aria-hidden': 'true' }) : null),
+        h('span', { class: 'avatar' }, h('img', { src: a.thumb, alt: '' }), a.live ? h('span', { class: 'livedot ping', 'aria-hidden': 'true' }) : null),
         h('span', { class: 'side-text' }, h('span', { class: 'side-name', text: `Attempt ${a.n}` }),
           h('span', { class: 'side-sub', text: a.live ? `Live · ${a.latest ? a.latest.date : ''}` : (a.reason || subtitle(a)) })),
         h('span', { class: 'side-stat' }, h('span', { class: 'dot' + (a.live ? ' live' : '') }), a.live ? 'live' : short(a.peak)));
@@ -262,11 +280,11 @@
         : lead.reason;
       wrap.append(h('section', { class: 'hero' },
         attemptLink(lead, 'hero-media',
-          h('img', { src: lead.thumb, alt: `Attempt ${lead.n}, ${l.date || ''}: the city on screen` }),
+          h('img', { class: lead.live ? 'fx-pan' : null, style: lead.live ? panSync() : null, src: lead.thumb, alt: `Attempt ${lead.n}, ${l.date || ''}: the city on screen` }),
           badge(lead),
           h('span', { class: 'play-overlay', 'aria-hidden': 'true' }, h('span', {}, s('svg', { width: 28, height: 28, viewBox: '0 0 28 28' }, s('path', { d: 'M9 5 L23 14 L9 23 Z', fill: '#fff' }))))),
         h('div', { class: 'hero-body' },
-          h('div', { class: 'eyebrow', text: lead.live ? 'LIVE NOW' : 'LATEST ATTEMPT' }),
+          h('div', { class: 'eyebrow' + (lead.live ? ' fx-shimmer' : ''), text: lead.live ? 'LIVE NOW' : 'LATEST ATTEMPT' }),
           h('h1', { text: lead.live ? `Attempt ${lead.n} · year ${Math.max(0, Math.floor(lead.gy - START))}` : title(lead) }),
           h('p', { text }),
           h('div', { class: 'tags' }, ['SimCity 2000', 'Claude Code', 'Medium', 'Disasters on'].map((t) => h('span', { class: 'tag', text: t }))),
@@ -281,7 +299,7 @@
   function card(a) {
     return attemptLink(a, 'card',
       h('span', { class: 'thumb' },
-        h('img', { src: a.thumb, alt: `Attempt ${a.n} city`, loading: 'lazy' }), badge(a),
+        h('img', { class: a.live ? 'fx-pan' : null, style: a.live ? panSync() : null, src: a.thumb, alt: `Attempt ${a.n} city`, loading: 'lazy' }), badge(a),
         h('span', { class: 'corner l', text: a.live ? 'LIVE' : (a.timelapse ? 'TIMELAPSE' : 'RECORDINGS') }),
         h('span', { class: 'corner r', text: `peak ${fmt(a.peak)}` })),
       h('span', { class: 'card-meta' },
@@ -324,20 +342,99 @@
       h('span', { class: 'outcome ' + out[0], text: out[1] }));
 
     const last = a.rows[a.rows.length - 1] || {};
+    // [label, raw number, formatter, note]
     const stats = a.live
-      ? [['Population', fmt(a.pop), 'of 100,000'], ['Pace needed now', fmt(pace(a.gy)), a.pop >= pace(a.gy) ? 'ahead of pace' : 'behind pace'],
-        ['Cash', money(l.money), l.date || ''], ['Loans', fmt(l.bonds), 'bonds out'], ['Game year', String(Math.max(0, Math.floor(a.gy - START))), 'of 50']]
-      : [['Peak population', fmt(a.peak), a.peakDate], ['Pace at that date', fmt(pace(gyOf(a, a.peakDate))), a.peak >= pace(gyOf(a, a.peakDate)) ? 'ahead of pace' : 'behind pace'],
-        ['Game years', String(Math.max(0, Math.round(a.gy - START))), 'of 50'], ['Loans at the end', fmt(last.bonds), 'bonds out'], ['Recordings', String(a.parts.length), '30-min parts']];
-    document.getElementById('stats').replaceChildren(...stats.map(([lab, v, note]) =>
-      h('div', { class: 'stat' }, h('span', { class: 'stat-l', text: lab }), h('span', { class: 'stat-v', text: v }), h('span', { class: 'stat-n', text: note }))));
+      ? [['Population', a.pop, fmt, 'of 100,000'], ['Pace needed now', pace(a.gy), fmt, a.pop >= pace(a.gy) ? 'ahead of pace' : 'behind pace'],
+        ['Cash', l.money, money, l.date || ''], ['Loans', l.bonds, fmt, 'bonds out'], ['Game year', Math.max(0, Math.floor(a.gy - START)), String, 'of 50']]
+      : [['Peak population', a.peak, fmt, a.peakDate], ['Pace at that date', pace(gyOf(a, a.peakDate)), fmt, a.peak >= pace(gyOf(a, a.peakDate)) ? 'ahead of pace' : 'behind pace'],
+        ['Game years', Math.max(0, Math.round(a.gy - START)), String, 'of 50'], ['Loans at the end', last.bonds, fmt, 'bonds out'], ['Recordings', a.parts.length, String, '30-min parts']];
+    fillStats(a, stats);
 
-    document.getElementById('chart').replaceChildren(chart(a));
+    const chartBox = document.getElementById('chart');
+    const firstChart = !chartBox.dataset.drawn;
+    chartBox.replaceChildren(chart(a, firstChart));
+    chartBox.dataset.drawn = '1';
     document.getElementById('table').replaceChildren(table(a));
     fillWhy(a);
     const ch = document.getElementById('chapters');
     ch.replaceChildren(...(a.yearly.length ? a.yearly.slice().reverse().map(chapter) : [h('p', { class: 'empty', text: 'Chapters appear here as each game year ends.' })]));
     document.getElementById('more').replaceChildren(...state.list.filter((n) => n !== a.n).map((n) => state.attempts.get(n)).filter(Boolean).map(card));
+  }
+
+  function fillStats(a, stats) {
+    const box = document.getElementById('stats');
+    const key = a.n + ':' + a.live;
+    if (box.dataset.key !== key) {
+      box.dataset.key = key;
+      box.replaceChildren(...stats.map(([lab, raw, f, note]) =>
+        h('div', { class: 'stat' }, h('span', { class: 'stat-l', text: lab }),
+          h('span', { class: 'stat-row' }, h('span', { class: 'stat-v', 'data-raw': String(raw ?? ''), text: raw == null ? '–' : f(raw) })),
+          h('span', { class: 'stat-n', text: note }))));
+      return;
+    }
+    stats.forEach(([, raw, f, note], i) => {
+      const el = box.children[i];
+      if (!el) return;
+      const v = el.querySelector('.stat-v');
+      el.querySelector('.stat-n').textContent = note;
+      const old = Number(v.dataset.raw);
+      v.dataset.raw = String(raw ?? '');
+      if (raw == null || isNaN(old) || old === raw) { v.textContent = raw == null ? '–' : f(raw); return; }
+      rollNumber(v, old, raw, f);
+      const d = raw - old;
+      const chip = h('span', { class: 'float-chip ' + (d >= 0 ? 'up' : 'down'), 'aria-hidden': 'true', text: (d >= 0 ? '+' : '−') + (f === money ? money(Math.abs(d)) : fmt(Math.abs(d))) });
+      el.querySelector('.stat-row').append(chip);
+      setTimeout(() => chip.remove(), 2400);
+    });
+  }
+
+  function rollNumber(el, from, to, f) {
+    if (REDUCED) { el.textContent = f(to); return; }
+    const start = performance.now(), dur = 1100;
+    const step = (now) => {
+      const t = Math.min(1, (now - start) / dur), e = 1 - Math.pow(1 - t, 3);
+      el.textContent = f(Math.round(from + (to - from) * e));
+      if (t < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  // ---------- toast ----------
+  function showToast(a, m, count) {
+    let box = document.getElementById('toasts');
+    if (!box) { box = h('div', { id: 'toasts', class: 'toasts', role: 'status', 'aria-live': 'polite' }); document.body.append(box); }
+    const t = h('a', { class: 'toast', href: `#/attempt/${a.n}` },
+      h('span', { class: 'ping', 'aria-hidden': 'true' }),
+      h('span', { class: 'toast-body' },
+        h('b', { text: `Attempt ${a.n} · ${count > 1 ? count + ' new moves' : 'new move'}` }),
+        h('span', { text: m.text || '' })));
+    box.append(t);
+    setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 400); }, 6000);
+    while (box.children.length > 3) box.firstChild.remove();
+  }
+
+  // ---------- countdown to the next bot update ----------
+  function tickCountdown() {
+    const bar = document.getElementById('cdFill');
+    if (!bar) return;
+    const a = state.attempts.get(state.shown);
+    if (!a || !a.live) return;
+    const lab = document.getElementById('cdLabel');
+    const last = Date.parse(a.updated);
+    const wrap = bar.parentElement;
+    wrap.classList.toggle('flash', Date.now() < (state.flashUntil || 0));
+    if (!last) { lab.textContent = ''; return; }
+    const left = last + BOT_EVERY_MS - Date.now();
+    if (left <= 0) {
+      bar.style.width = '100%';
+      wrap.classList.add('waiting');
+      lab.textContent = 'Checking for an update…';
+      return;
+    }
+    wrap.classList.remove('waiting');
+    bar.style.width = Math.max(0, Math.min(100, (1 - left / BOT_EVERY_MS) * 100)).toFixed(1) + '%';
+    const sec = Math.ceil(left / 1000);
+    lab.textContent = `Next update in ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
   }
 
   function gyOf(a, date) {
@@ -361,7 +458,9 @@
     if (box.dataset.key === key) {
       // Same source: only refresh the live image and the source list (new parts may have arrived).
       const img = box.querySelector('img.liveimg');
-      if (img) img.src = a.thumb;
+      if (img && img.dataset.src !== a.updated) crossfade(img, a);
+      const rec = box.querySelector('.rec-date');
+      if (rec) rec.textContent = a.latest ? a.latest.date : '';
       const note = box.querySelector('.player-note');
       if (note && cur.key === 'live') note.textContent = liveNote(a);
       box.querySelector('.sources').replaceChildren(...sourceChips(a, srcs));
@@ -370,7 +469,10 @@
     box.dataset.key = key;
     let media;
     if (cur.key === 'live') {
-      media = h('div', { class: 'player' }, h('img', { class: 'liveimg', src: a.thumb, alt: `Attempt ${a.n}, latest screenshot of the game` }), badge(a));
+      media = h('div', { class: 'player live' },
+        h('img', { class: 'liveimg fx-pan', src: a.thumb, 'data-src': a.updated || '', alt: `Attempt ${a.n}, latest screenshot of the game` }),
+        badge(a),
+        h('span', { class: 'rec' }, h('span', { class: 'rec-dot', 'aria-hidden': 'true', text: '●' }), ' REC · ', h('span', { class: 'rec-date', text: a.latest ? a.latest.date : '' })));
     } else {
       const src = cur.key === 'timelapse' ? a.timelapse : cur.src;
       media = h('div', { class: 'player' }, h('video', { controls: true, preload: 'metadata', playsinline: true, src, poster: a.thumb, 'aria-label': `Attempt ${a.n} ${cur.label.toLowerCase()}` }));
@@ -378,9 +480,22 @@
     const note = cur.key === 'live' ? liveNote(a)
       : cur.key === 'timelapse' ? 'Timelapse of the whole attempt, sped up. The top bar shows the game date, population and cash.'
         : `${cur.label} of the full recording (about 30 minutes, real speed).`;
-    box.replaceChildren(h('div', { class: 'browse', style: 'gap:8px' }, media,
+    const countdown = cur.key === 'live' ? h('div', { class: 'countdown' },
+      h('div', { class: 'cd-track' }, h('div', { id: 'cdFill', class: 'cd-fill' })),
+      h('span', { id: 'cdLabel', class: 'cd-label' })) : null;
+    box.replaceChildren(h('div', { class: 'browse', style: 'gap:8px' }, media, countdown,
       h('div', { class: 'sources', role: 'group', 'aria-label': 'Video' }, ...sourceChips(a, srcs)),
       h('span', { class: 'player-note', text: note })));
+  }
+  function crossfade(img, a) {
+    const next = new Image();
+    next.onload = () => {
+      const top = h('img', { class: 'liveimg-next', src: next.src, alt: '' });
+      img.parentElement.insertBefore(top, img.nextSibling);
+      requestAnimationFrame(() => top.classList.add('in'));
+      setTimeout(() => { img.src = next.src; img.dataset.src = a.updated || ''; top.remove(); }, 1300);
+    };
+    next.src = a.thumb;
   }
   function liveNote(a) {
     return `Latest screenshot from the game (${a.latest ? a.latest.date : ''}). It refreshes every few minutes; finished recordings appear as parts.`;
@@ -392,7 +507,7 @@
     }));
   }
 
-  function chart(a) {
+  function chart(a, draw) {
     const W = 600, H = 210, L = 44, R = 12, T = 14, B = 26;
     const pts = a.rows.map((r) => [r.gy, r.population]);
     const lastGy = pts.length ? pts[pts.length - 1][0] : START;
@@ -413,8 +528,11 @@
     svg.append(g);
     svg.append(s('line', { x1: X(START), y1: Y(0), x2: X(xMax), y2: Y(pace(xMax)), style: 'stroke:var(--pace)', 'stroke-width': 1.5, 'stroke-dasharray': '5 4' }));
     if (pts.length) {
-      svg.append(s('polyline', { points: pts.map((p) => X(p[0]).toFixed(1) + ',' + Y(p[1]).toFixed(1)).join(' '), fill: 'none', style: 'stroke:var(--series)', 'stroke-width': 2.5, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+      const line = { points: pts.map((p) => X(p[0]).toFixed(1) + ',' + Y(p[1]).toFixed(1)).join(' '), fill: 'none', style: 'stroke:var(--series)', 'stroke-width': 2.5, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' };
+      if (draw) Object.assign(line, { class: 'fx-draw', pathLength: 1 });
+      svg.append(s('polyline', line));
       const e = pts[pts.length - 1];
+      if (a.live) svg.append(s('circle', { class: 'fx-ptpulse', cx: X(e[0]), cy: Y(e[1]), r: 5, style: 'fill:var(--series)' }));
       svg.append(s('circle', { cx: X(e[0]), cy: Y(e[1]), r: 4.5, style: 'fill:var(--series);stroke:var(--surface)', 'stroke-width': 2 }));
       svg.append(s('text', { x: Math.min(X(e[0]) + 8, W - 60), y: Y(e[1]) - 8, style: 'fill:var(--ink)', 'font-family': 'JetBrains Mono, monospace', 'font-size': 11 }, fmt(e[1])));
     }
@@ -488,7 +606,7 @@
     return [
       h('div', { class: 'chat-head' },
         h('button', { class: 'icon-btn', type: 'button', 'aria-expanded': String(!state.chatCollapsed), 'aria-label': state.chatCollapsed ? 'Expand agent chat' : 'Collapse agent chat', onClick: toggle }, chevron()),
-        h('span', { class: 't', text: 'AGENT CHAT' }), h('span', { id: 'chatNote', class: 'n' })),
+        h('span', { class: 't', text: 'AGENT CHAT' }), a.live ? h('span', { class: 'ping small', 'aria-hidden': 'true' }) : null, h('span', { id: 'chatNote', class: 'n' })),
       h('button', { class: 'chat-rail', type: 'button', 'aria-label': 'Expand agent chat', onClick: toggle },
         s('svg', { width: 20, height: 20, viewBox: '0 0 16 16', 'aria-hidden': 'true' }, s('path', { d: 'M3 2 H13 V11 H8 L5 14 V11 H3 Z', fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5, 'stroke-linejoin': 'round' })),
         h('span', { text: 'AGENT CHAT' })),
@@ -496,6 +614,7 @@
         h('div', { id: 'pinned', class: 'pinned' }),
         h('div', { id: 'chips', class: 'chips', role: 'group', 'aria-label': 'Filter by move type' }),
         h('div', { id: 'msgs', class: 'msgs', 'aria-live': a.live ? 'polite' : 'off' }),
+        a.live ? h('div', { class: 'typing' }, h('span', { class: 'dots', 'aria-hidden': 'true' }, h('i'), h('i'), h('i')), 'Claude is playing… next move soon') : null,
         h('div', { class: 'chat-foot' },
           h('label', { for: 'chatSearch', text: 'Search moves by word or year (e.g. pumps, loan, 2011)' }),
           h('div', { class: 'row' }, search, h('button', { type: 'button', class: 'btn ghost', text: 'Clear', onClick: () => { state.chatKind = 'all'; state.chatQuery = ''; search.value = ''; fillChat(a, true); } })),
@@ -562,5 +681,6 @@
   refresh();
   setInterval(refresh, POLL_MS);
   setInterval(renderUpdated, 30 * 1000);
+  setInterval(tickCountdown, 1000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
 })();
