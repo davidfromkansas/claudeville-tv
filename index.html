@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claudeville TV</title>
 <meta name="description" content="Watch Claude play SimCity 2000: every Claudeville 3 attempt, live, with what the agent is doing.">
-<meta name="theme-color" content="#0F0F12">
+<meta name="theme-color" content="#FFFFFF">
+<script>try{if(localStorage.getItem("cvtv.theme")==="dark")document.documentElement.dataset.theme="dark"}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -16,7 +17,7 @@
 <header class="topbar">
   <div class="topbar-left">
     <a class="brand" href="#/">
-      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><rect x="2" y="12" width="7" height="16" fill="none" stroke="#C4A8FF" stroke-width="2"/><rect x="11.5" y="3" width="7" height="25" fill="none" stroke="#C4A8FF" stroke-width="2"/><rect x="21" y="17" width="7" height="11" fill="none" stroke="#C4A8FF" stroke-width="2"/></svg>
+      <svg class="logo" width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><rect x="2" y="12" width="7" height="16" fill="none" stroke="currentColor" stroke-width="2"/><rect x="11.5" y="3" width="7" height="25" fill="none" stroke="currentColor" stroke-width="2"/><rect x="21" y="17" width="7" height="11" fill="none" stroke="currentColor" stroke-width="2"/></svg>
       <span>Claudeville TV</span>
     </a>
     <nav class="topnav">
@@ -26,6 +27,7 @@
   </div>
   <div class="topbar-right">
     <span id="updated" class="updated" aria-live="polite"></span>
+    <button id="themeBtn" class="icon-btn" type="button" aria-label="Switch to dark mode"></button>
   </div>
 </header>
 

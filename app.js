@@ -302,8 +302,8 @@
       h('section', { class: 'box chart' },
         h('div', { class: 'section-head' }, h('h2', { text: 'Population vs. the pace to 100,000' }),
           h('div', { class: 'legend' },
-            h('span', {}, s('svg', { width: 22, height: 4, 'aria-hidden': 'true' }, s('line', { x1: 0, y1: 2, x2: 22, y2: 2, stroke: '#C4A8FF', 'stroke-width': 3 })), 'This attempt'),
-            h('span', {}, s('svg', { width: 22, height: 4, 'aria-hidden': 'true' }, s('line', { x1: 0, y1: 2, x2: 22, y2: 2, stroke: '#6E6E7A', 'stroke-width': 2, 'stroke-dasharray': '4 3' })), 'Pace needed'))),
+            h('span', {}, s('svg', { width: 22, height: 4, 'aria-hidden': 'true' }, s('line', { x1: 0, y1: 2, x2: 22, y2: 2, style: 'stroke:var(--series)', 'stroke-width': 3 })), 'This attempt'),
+            h('span', {}, s('svg', { width: 22, height: 4, 'aria-hidden': 'true' }, s('line', { x1: 0, y1: 2, x2: 22, y2: 2, style: 'stroke:var(--pace)', 'stroke-width': 2, 'stroke-dasharray': '4 3' })), 'Pace needed'))),
         h('div', { id: 'chart' })),
       h('section', { class: 'box' },
         h('div', { class: 'section-head' }, h('h2', { text: 'Game data' }), h('span', { class: 'muted', text: 'From the save file · newest first · one row per game year' })),
@@ -403,20 +403,20 @@
     const X = (g) => L + (g - START) / (xMax - START) * (W - L - R);
     const Y = (p) => T + (1 - p / yMax) * (H - T - B);
     const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `Attempt ${a.n} population by game year against the straight-line pace to 100,000 by 2050. Peak ${fmt(a.peak)}.` });
-    const g = s('g', { 'font-family': 'JetBrains Mono, monospace', 'font-size': 10, fill: '#A3A3AE' });
+    const g = s('g', { 'font-family': 'JetBrains Mono, monospace', 'font-size': 10, style: 'fill:var(--muted)' });
     for (let v = 0; v <= yMax; v += step) {
-      g.append(s('line', { x1: L, x2: W - R, y1: Y(v), y2: Y(v), stroke: v ? '#2E2E36' : '#4A4A55' }));
+      g.append(s('line', { x1: L, x2: W - R, y1: Y(v), y2: Y(v), style: 'stroke:' + (v ? 'var(--border)' : 'var(--border-2)') }));
       g.append(s('text', { x: L - 6, y: Y(v) + 3, 'text-anchor': 'end' }, short(v)));
     }
     const yStep = xMax - START > 30 ? 10 : 5;
     for (let y = START; y <= xMax; y += yStep) g.append(s('text', { x: X(y), y: H - 8, 'text-anchor': y === START ? 'start' : 'middle' }, String(y)));
     svg.append(g);
-    svg.append(s('line', { x1: X(START), y1: Y(0), x2: X(xMax), y2: Y(pace(xMax)), stroke: '#6E6E7A', 'stroke-width': 1.5, 'stroke-dasharray': '5 4' }));
+    svg.append(s('line', { x1: X(START), y1: Y(0), x2: X(xMax), y2: Y(pace(xMax)), style: 'stroke:var(--pace)', 'stroke-width': 1.5, 'stroke-dasharray': '5 4' }));
     if (pts.length) {
-      svg.append(s('polyline', { points: pts.map((p) => X(p[0]).toFixed(1) + ',' + Y(p[1]).toFixed(1)).join(' '), fill: 'none', stroke: '#C4A8FF', 'stroke-width': 2.5, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+      svg.append(s('polyline', { points: pts.map((p) => X(p[0]).toFixed(1) + ',' + Y(p[1]).toFixed(1)).join(' '), fill: 'none', style: 'stroke:var(--series)', 'stroke-width': 2.5, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
       const e = pts[pts.length - 1];
-      svg.append(s('circle', { cx: X(e[0]), cy: Y(e[1]), r: 4.5, fill: '#C4A8FF', stroke: '#18181C', 'stroke-width': 2 }));
-      svg.append(s('text', { x: Math.min(X(e[0]) + 8, W - 60), y: Y(e[1]) - 8, fill: '#EDEDF0', 'font-family': 'JetBrains Mono, monospace', 'font-size': 11 }, fmt(e[1])));
+      svg.append(s('circle', { cx: X(e[0]), cy: Y(e[1]), r: 4.5, style: 'fill:var(--series);stroke:var(--surface)', 'stroke-width': 2 }));
+      svg.append(s('text', { x: Math.min(X(e[0]) + 8, W - 60), y: Y(e[1]) - 8, style: 'fill:var(--ink)', 'font-family': 'JetBrains Mono, monospace', 'font-size': 11 }, fmt(e[1])));
     }
     return svg;
   }
@@ -508,7 +508,7 @@
     if (!msgs) return;
     document.getElementById('chatNote').textContent = a.live ? 'live' : `${a.moves.length} moves`;
     document.getElementById('pinned').replaceChildren(
-      s('svg', { width: 16, height: 16, viewBox: '0 0 16 16', 'aria-hidden': 'true', style: 'flex:0 0 16px;margin-top:2px' }, s('path', { d: 'M3 2 H13 V11 H8 L5 14 V11 H3 Z', fill: 'none', stroke: '#C4A8FF', 'stroke-width': 1.5, 'stroke-linejoin': 'round' })),
+      s('svg', { width: 16, height: 16, viewBox: '0 0 16 16', 'aria-hidden': 'true', style: 'flex:0 0 16px;margin-top:2px' }, s('path', { d: 'M3 2 H13 V11 H8 L5 14 V11 H3 Z', fill: 'none', style: 'stroke:var(--accent)', 'stroke-width': 1.5, 'stroke-linejoin': 'round' })),
       h('span', {}, h('b', { text: 'Pinned plan: ' }), a.strategy || 'Not posted yet.'));
 
     const counts = {};
@@ -537,6 +537,25 @@
     if (first || atBottom || userAction) msgs.scrollTop = msgs.scrollHeight;
     document.getElementById('chatCount').textContent = `Showing ${shown.length} of ${a.moves.length} moves · newest at the bottom`;
   }
+
+  // ---------- theme ----------
+  function renderTheme() {
+    const dark = document.documentElement.dataset.theme === 'dark';
+    const btn = document.getElementById('themeBtn');
+    btn.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+    btn.title = btn.getAttribute('aria-label');
+    btn.replaceChildren(dark
+      ? icon('M10 2 V4 M10 16 V18 M2 10 H4 M16 10 H18 M4.3 4.3 L5.7 5.7 M14.3 14.3 L15.7 15.7 M4.3 15.7 L5.7 14.3 M14.3 5.7 L15.7 4.3', 20, [s('circle', { cx: 10, cy: 10, r: 3.5, fill: 'none', stroke: 'currentColor', 'stroke-width': 2 })])
+      : icon('M16 12.5 A7 7 0 1 1 7.5 4 A5.5 5.5 0 0 0 16 12.5 Z'));
+    document.querySelector('meta[name=theme-color]').setAttribute('content', dark ? '#0F0F12' : '#FFFFFF');
+  }
+  document.getElementById('themeBtn').addEventListener('click', () => {
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = next;
+    store('theme', next);
+    renderTheme();
+  });
+  renderTheme();
 
   // ---------- start ----------
   readRoute();
